@@ -117,6 +117,25 @@ Build the desktop app:
 pnpm tauri:build
 ```
 
+## Releases
+
+GitHub Actions can create draft releases and upload desktop bundles automatically.
+
+Create and push a version tag:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The release workflow builds:
+
+- macOS Apple Silicon: `.app` and `.dmg`
+- macOS Intel: `.app` and `.dmg`
+- Windows x64: NSIS `.exe` and MSI `.msi`
+
+You can also start the same workflow manually from the GitHub Actions tab and provide a release tag such as `v0.1.0`.
+
 ## Quality Checks
 
 Run the frontend production build:
