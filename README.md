@@ -1,59 +1,153 @@
 # ConfigPilot
 
-ConfigPilot 是一个基于 Tauri 2、Rust、React 和 Vite 的个人配置文件同步管理系统。它面向 macOS 桌面环境，聚焦同步 zsh 与 Ghostty 配置，通过 GitHub Device Flow 授权后自动创建私有仓库 `configpilot-dotfiles`，并支持本地配置监听、备份、恢复和冲突处理。
+[![CI](https://github.com/itscyrus-dev/confpilot/actions/workflows/ci.yml/badge.svg)](https://github.com/itscyrus-dev/confpilot/actions/workflows/ci.yml)
 
-## 功能
+ConfigPilot is a desktop configuration backup and synchronization app for macOS. It is built with Tauri 2, Rust, React, TypeScript, Vite, and Tailwind CSS.
 
-- 扫描 `~/.zshrc`、`~/.zprofile`、`~/.zshenv`、`~/.config/zsh/`
-- 扫描 `~/.config/ghostty/config`、`~/.config/ghostty/`
-- GitHub Device Flow 授权
-- 自动创建或复用 GitHub 私有仓库 `configpilot-dotfiles`
-- 本地 app data 工作区缓存 Git 仓库
-- 手动备份、恢复和双向同步
-- 自动监听配置文件变化并同步
-- 冲突时保留本地和远端副本，不自动覆盖用户配置
-- 提供软著申请文档目录
+The app focuses on personal shell and terminal configuration files, starting with zsh and Ghostty. It authenticates with GitHub, creates or reuses a private repository named `configpilot-dotfiles`, keeps a local Git-backed cache in the application data directory, and provides manual sync, restore, file watching, and conflict handling.
 
-## 运行
+## Features
 
-首次运行需要准备 GitHub OAuth App 的 Client ID 和 Client Secret。请把 OAuth App 的 callback URL 设置为：
+- Scan common zsh configuration files:
+  - `~/.zshrc`
+  - `~/.zprofile`
+  - `~/.zshenv`
+  - `~/.config/zsh/`
+- Scan Ghostty configuration:
+  - `~/.config/ghostty/config`
+  - `~/.config/ghostty/`
+- Authenticate with GitHub using OAuth browser login or device flow.
+- Create or reuse a private GitHub repository named `configpilot-dotfiles`.
+- Store a local Git workspace in the app data directory.
+- Back up local configuration files to GitHub.
+- Restore configuration files from the synced repository.
+- Run bidirectional sync against the local cache and remote repository.
+- Watch local configuration files and sync changes automatically.
+- Preserve both local and remote copies when conflicts are detected.
+- Store GitHub tokens through the operating system credential store.
+
+## Tech Stack
+
+- **Desktop runtime:** Tauri 2
+- **Backend:** Rust
+- **Frontend:** React 18, TypeScript, Vite
+- **UI:** Tailwind CSS, Radix UI primitives, lucide-react icons
+- **Sync engine:** Git repository cache plus GitHub API integration
+- **Credential storage:** system keychain through the Rust `keyring` crate
+
+## Repository Layout
+
+```text
+.
+├── src/                  # React frontend
+├── src-tauri/            # Tauri and Rust backend
+├── docs/                 # Project documentation
+├── index.html            # Vite entry document
+├── package.json          # Frontend scripts and dependencies
+├── pnpm-lock.yaml        # pnpm lockfile
+├── vite.config.ts        # Vite configuration
+└── README.md
+```
+
+## Requirements
+
+- macOS for the primary desktop target.
+- Node.js 20 or newer.
+- pnpm 9 or newer.
+- Rust stable.
+- Tauri system dependencies for your operating system.
+- A GitHub OAuth app if you want to test GitHub authentication locally.
+
+For Linux CI or Linux development, Tauri also needs WebKit and GTK development packages. See `.github/workflows/ci.yml` for the exact Ubuntu packages used by the automated checks.
+
+## GitHub OAuth Setup
+
+Create a GitHub OAuth app and configure the callback URL as:
 
 ```text
 http://127.0.0.1:39119/callback
 ```
 
-ConfigPilot 浏览器登录时会临时监听 `127.0.0.1:39119` 接收 GitHub 回调。
+ConfigPilot temporarily listens on `127.0.0.1:39119` during browser-based login so it can receive the OAuth callback.
 
-可以直接在项目根目录创建 `.env`：
+Copy the example environment file:
 
 ```bash
 cp .env.example .env
 ```
 
-然后编辑 `.env`：
+Then set your credentials:
 
 ```text
-CONFIGPILOT_GITHUB_CLIENT_ID="你的 GitHub OAuth Client ID"
-CONFIGPILOT_GITHUB_CLIENT_SECRET="你的 GitHub OAuth Client Secret"
+CONFIGPILOT_GITHUB_CLIENT_ID=your-github-oauth-client-id
+CONFIGPILOT_GITHUB_CLIENT_SECRET=your-github-oauth-client-secret
 ```
 
-也可以临时通过终端环境变量启动：
+You can also provide the same values as shell environment variables before starting the app.
+
+## Development
+
+Install dependencies:
 
 ```bash
-export CONFIGPILOT_GITHUB_CLIENT_ID="你的 GitHub OAuth Client ID"
-export CONFIGPILOT_GITHUB_CLIENT_SECRET="你的 GitHub OAuth Client Secret"
-npm install
-npm run tauri:dev
+pnpm install
 ```
 
-如果只想检查前端：
+Run the Tauri desktop app in development mode:
 
 ```bash
-npm install
-npm run dev
+pnpm tauri:dev
 ```
 
-## 同步仓库结构
+Run only the Vite frontend:
+
+```bash
+pnpm dev
+```
+
+Build the frontend:
+
+```bash
+pnpm build
+```
+
+Build the desktop app:
+
+```bash
+pnpm tauri:build
+```
+
+## Quality Checks
+
+Run the frontend production build:
+
+```bash
+pnpm build
+```
+
+Check Rust formatting:
+
+```bash
+cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+```
+
+Run Clippy:
+
+```bash
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+```
+
+Run Rust tests:
+
+```bash
+cargo test --manifest-path src-tauri/Cargo.toml
+```
+
+The GitHub Actions workflow runs these checks automatically on pushes and pull requests.
+
+## Synced Repository Format
+
+ConfigPilot writes configuration files into the GitHub repository using a stable layout:
 
 ```text
 zsh/
@@ -67,16 +161,41 @@ ghostty/
 manifest.json
 ```
 
-## 安全说明
+`manifest.json` records source paths, target paths, file hashes, and sync timestamps.
 
-ConfigPilot 第一版不会同步 `.ssh`、Git 凭据、系统 Keychain、浏览器配置等高风险数据。GitHub token 通过系统安全存储保存，macOS 下会进入 Keychain。冲突发生时应用只生成冲突副本并提示选择，不会静默覆盖本地配置。
+## Security Model
 
-## 软著材料
+ConfigPilot is intentionally conservative about what it syncs.
 
-软著申请相关文档位于：
+- It does not sync SSH keys, Git credentials, browser profiles, system keychains, or other high-risk secrets.
+- GitHub tokens are stored in the operating system credential store.
+- The default sync repository is private.
+- Conflict resolution is explicit. The app keeps local and remote conflict copies instead of silently overwriting user files.
+- The local repository cache is stored in the application data directory, not in the project source tree.
 
-```text
-docs/software-copyright/
-```
+Review all configuration files before syncing them to any remote service.
 
-包含软件说明书、用户操作手册、系统设计说明书、主要功能模块说明和源代码目录说明。
+## Roadmap
+
+- Expand supported configuration sources.
+- Add richer conflict diff and merge flows.
+- Add signed release packaging.
+- Add optional selective sync profiles.
+- Add automated frontend tests.
+
+## Contributing
+
+Contributions are welcome.
+
+1. Fork the repository.
+2. Create a feature branch.
+3. Install dependencies with `pnpm install`.
+4. Make focused changes.
+5. Run the quality checks listed above.
+6. Open a pull request with a clear description of the change and any relevant screenshots.
+
+Please keep changes small, tested, and aligned with the current Tauri 2 and React architecture.
+
+## License
+
+No license file is currently included. Add an open-source license before distributing or accepting external contributions.

@@ -1,7 +1,9 @@
 use anyhow::{anyhow, Context, Result};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{DateTime, Local, Utc};
-use git2::{Cred, FetchOptions, IndexAddOption, PushOptions, RemoteCallbacks, Repository, Signature};
+use git2::{
+    Cred, FetchOptions, IndexAddOption, PushOptions, RemoteCallbacks, Repository, Signature,
+};
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use rand::RngCore;
 use reqwest::Client;
@@ -275,7 +277,11 @@ fn setup_tray(app: &AppHandle) -> Result<()> {
     let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
     TrayIconBuilder::with_id("configpilot-tray")
         .tooltip("ConfigPilot")
-        .icon(app.default_window_icon().context("缺少应用托盘图标")?.clone())
+        .icon(
+            app.default_window_icon()
+                .context("缺少应用托盘图标")?
+                .clone(),
+        )
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
@@ -359,8 +365,8 @@ async fn start_github_device_flow() -> CommandResult<DeviceFlowStart> {
     if !status.is_success() {
         return Err(anyhow!("GitHub Device Flow 返回错误状态 {status}: {body}").into());
     }
-    let response =
-        serde_json::from_str::<DeviceFlowResponse>(&body).context("无法解析 GitHub Device Flow 响应")?;
+    let response = serde_json::from_str::<DeviceFlowResponse>(&body)
+        .context("无法解析 GitHub Device Flow 响应")?;
 
     Ok(DeviceFlowStart {
         device_code: response.device_code,
@@ -395,9 +401,7 @@ fn browser_login_blocking(app: AppHandle) -> Result<DeviceTokenStatus> {
         .status()
         .context("无法打开 GitHub 登录页面")?;
 
-    let (mut stream, _) = listener
-        .accept()
-        .context("等待 GitHub OAuth 回调失败")?;
+    let (mut stream, _) = listener.accept().context("等待 GitHub OAuth 回调失败")?;
     stream
         .set_read_timeout(Some(Duration::from_secs(10)))
         .context("无法设置 OAuth 回调读取超时")?;
@@ -412,7 +416,11 @@ fn browser_login_blocking(app: AppHandle) -> Result<DeviceTokenStatus> {
     let params = parse_query(path);
     let returned_state = params.get("state").cloned().unwrap_or_default();
     if returned_state != state {
-        write_oauth_response(&mut stream, false, "state 校验失败，请回到 ConfigPilot 重试。")?;
+        write_oauth_response(
+            &mut stream,
+            false,
+            "state 校验失败，请回到 ConfigPilot 重试。",
+        )?;
         return Err(anyhow!("GitHub OAuth state 校验失败"));
     }
     let Some(code) = params.get("code").cloned() else {
@@ -466,7 +474,10 @@ async fn exchange_web_code(
         .await
         .context("无法交换 GitHub OAuth token")?;
     let status = response.status();
-    let body = response.text().await.context("无法读取 GitHub token 响应")?;
+    let body = response
+        .text()
+        .await
+        .context("无法读取 GitHub token 响应")?;
     if !status.is_success() {
         return Err(anyhow!("GitHub token 交换失败 {status}: {body}"));
     }
@@ -485,7 +496,10 @@ async fn exchange_web_code(
 }
 
 #[tauri::command]
-async fn poll_github_device_flow(app: AppHandle, device_code: String) -> CommandResult<DeviceTokenStatus> {
+async fn poll_github_device_flow(
+    app: AppHandle,
+    device_code: String,
+) -> CommandResult<DeviceTokenStatus> {
     let client_id = github_client_id()?;
     let client = github_client();
     let response = client
@@ -542,7 +556,10 @@ async fn ensure_private_repo(app: AppHandle) -> CommandResult<RepoResponse> {
     state.repo_owner = Some(user.login);
     state.repo_name = DEFAULT_REPO.to_string();
     state.repo_private = repo.private;
-    add_state_log(&mut state, &format!("GitHub 仓库已就绪：{}。", repo.full_name));
+    add_state_log(
+        &mut state,
+        &format!("GitHub 仓库已就绪：{}。", repo.full_name),
+    );
     save_state(&paths, &state)?;
     Ok(repo)
 }
@@ -602,7 +619,10 @@ fn start_watcher_internal(app: AppHandle, watcher_state: &Mutex<WatcherState>) -
         }
     });
 
-    watcher_state.lock().map_err(|_| anyhow!("监听器状态锁定失败"))?.watcher = Some(watcher);
+    watcher_state
+        .lock()
+        .map_err(|_| anyhow!("监听器状态锁定失败"))?
+        .watcher = Some(watcher);
     persisted.auto_watch = true;
     persisted.sync_status = "watching".to_string();
     add_state_log(&mut persisted, "自动监听已开启。");
@@ -614,7 +634,10 @@ fn start_watcher_internal(app: AppHandle, watcher_state: &Mutex<WatcherState>) -
 fn stop_watcher(app: AppHandle, state: State<Mutex<WatcherState>>) -> CommandResult<String> {
     let paths = app_paths(&app)?;
     let mut persisted = load_state(&paths)?;
-    state.lock().map_err(|_| anyhow!("监听器状态锁定失败"))?.watcher = None;
+    state
+        .lock()
+        .map_err(|_| anyhow!("监听器状态锁定失败"))?
+        .watcher = None;
     persisted.auto_watch = false;
     persisted.sync_status = "idle".to_string();
     add_state_log(&mut persisted, "自动监听已停止。");
@@ -633,10 +656,16 @@ fn resolve_conflict(app: AppHandle, request: ResolveConflictRequest) -> CommandR
 
     match request.strategy.as_str() {
         "local" => {
-            copy_path(Path::new(&conflict.local_conflict_path), &paths.repo_dir.join(&conflict.target_path))?;
+            copy_path(
+                Path::new(&conflict.local_conflict_path),
+                &paths.repo_dir.join(&conflict.target_path),
+            )?;
         }
         "remote" => {
-            copy_path(Path::new(&conflict.remote_conflict_path), Path::new(&conflict.source_path))?;
+            copy_path(
+                Path::new(&conflict.remote_conflict_path),
+                Path::new(&conflict.source_path),
+            )?;
         }
         "open" => {
             open_path(conflict.source_path.clone())?;
@@ -708,7 +737,10 @@ async fn backup_sync(app: &AppHandle) -> Result<SyncReport> {
     state.last_sync_at = Some(now_string());
     state.last_commit = commit.clone();
     state.sync_status = "success".to_string();
-    add_state_log(&mut state, &format!("备份完成：{} 个配置项。", synced.len()));
+    add_state_log(
+        &mut state,
+        &format!("备份完成：{} 个配置项。", synced.len()),
+    );
     save_state(&paths, &state)?;
     Ok(SyncReport {
         status: "success".to_string(),
@@ -733,7 +765,8 @@ async fn restore_sync(app: &AppHandle) -> Result<SyncReport> {
         if source.exists() {
             let destination = PathBuf::from(&config.source_path);
             if destination.exists() {
-                let backup = destination.with_extension(format!("configpilot-backup-{}", Utc::now().timestamp()));
+                let backup = destination
+                    .with_extension(format!("configpilot-backup-{}", Utc::now().timestamp()));
                 copy_path(&destination, &backup)?;
             }
             copy_path(&source, &destination)?;
@@ -742,7 +775,10 @@ async fn restore_sync(app: &AppHandle) -> Result<SyncReport> {
     }
     state.sync_status = "success".to_string();
     state.last_sync_at = Some(now_string());
-    add_state_log(&mut state, &format!("云端恢复完成：{} 个配置项。", restored.len()));
+    add_state_log(
+        &mut state,
+        &format!("云端恢复完成：{} 个配置项。", restored.len()),
+    );
     save_state(&paths, &state)?;
     Ok(SyncReport {
         status: "success".to_string(),
@@ -761,11 +797,36 @@ fn scan_configs() -> Result<Vec<ConfigFile>> {
     let home = dirs::home_dir().ok_or_else(|| anyhow!("无法定位用户主目录"))?;
     let candidates = vec![
         ("zshrc", "Zsh 主配置", home.join(".zshrc"), "zsh/.zshrc"),
-        ("zprofile", "Zsh 登录配置", home.join(".zprofile"), "zsh/.zprofile"),
-        ("zshenv", "Zsh 环境配置", home.join(".zshenv"), "zsh/.zshenv"),
-        ("zsh_config", "Zsh 配置目录", home.join(".config/zsh"), "zsh/config-zsh"),
-        ("ghostty_config", "Ghostty 主配置", home.join(".config/ghostty/config"), "ghostty/config"),
-        ("ghostty_dir", "Ghostty 配置目录", home.join(".config/ghostty"), "ghostty/ghostty"),
+        (
+            "zprofile",
+            "Zsh 登录配置",
+            home.join(".zprofile"),
+            "zsh/.zprofile",
+        ),
+        (
+            "zshenv",
+            "Zsh 环境配置",
+            home.join(".zshenv"),
+            "zsh/.zshenv",
+        ),
+        (
+            "zsh_config",
+            "Zsh 配置目录",
+            home.join(".config/zsh"),
+            "zsh/config-zsh",
+        ),
+        (
+            "ghostty_config",
+            "Ghostty 主配置",
+            home.join(".config/ghostty/config"),
+            "ghostty/config",
+        ),
+        (
+            "ghostty_dir",
+            "Ghostty 配置目录",
+            home.join(".config/ghostty"),
+            "ghostty/ghostty",
+        ),
     ];
 
     candidates
@@ -773,7 +834,11 @@ fn scan_configs() -> Result<Vec<ConfigFile>> {
         .map(|(id, label, path, target)| {
             let exists = path.exists();
             let is_dir = exists && path.is_dir();
-            let hash = if exists { Some(hash_path(&path)?) } else { None };
+            let hash = if exists {
+                Some(hash_path(&path)?)
+            } else {
+                None
+            };
             let last_modified = if exists {
                 Some(
                     fs::metadata(&path)?
@@ -953,7 +1018,10 @@ fn commit_and_push(paths: &AppPaths, token: &str) -> Result<Option<String>> {
         .ok()
         .and_then(|head| head.target())
         .and_then(|oid| repo.find_commit(oid).ok());
-    let message = format!("sync: update configs {}", Local::now().format("%Y-%m-%d %H:%M:%S"));
+    let message = format!(
+        "sync: update configs {}",
+        Local::now().format("%Y-%m-%d %H:%M:%S")
+    );
     let oid = if let Some(parent) = parent {
         repo.commit(Some("HEAD"), &sig, &sig, &message, &tree, &[&parent])?
     } else {
@@ -964,7 +1032,10 @@ fn commit_and_push(paths: &AppPaths, token: &str) -> Result<Option<String>> {
     let mut push_options = PushOptions::new();
     push_options.remote_callbacks(callbacks);
     let mut remote = repo.find_remote("origin")?;
-    remote.push(&["refs/heads/main:refs/heads/main"], Some(&mut push_options))?;
+    remote.push(
+        &["refs/heads/main:refs/heads/main"],
+        Some(&mut push_options),
+    )?;
     Ok(Some(oid.to_string()))
 }
 
@@ -1025,7 +1096,9 @@ fn github_client_id() -> Result<String> {
     load_dotenv();
     std::env::var("CONFIGPILOT_GITHUB_CLIENT_ID")
         .or_else(|_| std::env::var("VITE_CONFIGPILOT_GITHUB_CLIENT_ID"))
-        .map_err(|_| anyhow!("缺少 GitHub OAuth Client ID。请设置 CONFIGPILOT_GITHUB_CLIENT_ID 环境变量。"))
+        .map_err(|_| {
+            anyhow!("缺少 GitHub OAuth Client ID。请设置 CONFIGPILOT_GITHUB_CLIENT_ID 环境变量。")
+        })
 }
 
 fn github_client_secret() -> Result<String> {
@@ -1056,7 +1129,10 @@ fn pkce_challenge(verifier: &str) -> String {
 }
 
 fn parse_query(path: &str) -> HashMap<String, String> {
-    let query = path.split_once('?').map(|(_, query)| query).unwrap_or_default();
+    let query = path
+        .split_once('?')
+        .map(|(_, query)| query)
+        .unwrap_or_default();
     query
         .split('&')
         .filter_map(|pair| {
@@ -1070,14 +1146,18 @@ fn parse_query(path: &str) -> HashMap<String, String> {
 }
 
 fn write_oauth_response(stream: &mut std::net::TcpStream, ok: bool, message: &str) -> Result<()> {
-    let title = if ok { "ConfigPilot 授权完成" } else { "ConfigPilot 授权失败" };
+    let title = if ok {
+        "ConfigPilot 授权完成"
+    } else {
+        "ConfigPilot 授权失败"
+    };
     let body = format!(
         "<!doctype html><html><head><meta charset=\"utf-8\"><title>{}</title></head><body style=\"font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:40px\"><h1>{}</h1><p>{}</p></body></html>",
         title, title, message
     );
     let response = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-        body.as_bytes().len(),
+        body.len(),
         body
     );
     stream.write_all(response.as_bytes())?;
@@ -1085,10 +1165,7 @@ fn write_oauth_response(stream: &mut std::net::TcpStream, ok: bool, message: &st
 }
 
 fn app_paths(app: &AppHandle) -> Result<AppPaths> {
-    let data_dir = app
-        .path()
-        .app_data_dir()
-        .context("无法定位应用数据目录")?;
+    let data_dir = app.path().app_data_dir().context("无法定位应用数据目录")?;
     Ok(AppPaths {
         repo_dir: data_dir.join("repo"),
         state_file: data_dir.join("state.json"),
@@ -1100,7 +1177,9 @@ fn load_state(paths: &AppPaths) -> Result<PersistedState> {
     if !paths.state_file.exists() {
         return Ok(PersistedState::default());
     }
-    Ok(serde_json::from_str(&fs::read_to_string(&paths.state_file)?)?)
+    Ok(serde_json::from_str(&fs::read_to_string(
+        &paths.state_file,
+    )?)?)
 }
 
 fn save_state(paths: &AppPaths, state: &PersistedState) -> Result<()> {
@@ -1110,7 +1189,10 @@ fn save_state(paths: &AppPaths, state: &PersistedState) -> Result<()> {
 }
 
 fn add_state_log(state: &mut PersistedState, message: &str) {
-    state.logs.insert(0, format!("{}  {}", Local::now().format("%H:%M:%S"), message));
+    state.logs.insert(
+        0,
+        format!("{}  {}", Local::now().format("%H:%M:%S"), message),
+    );
     state.logs.truncate(80);
 }
 
@@ -1127,7 +1209,10 @@ fn load_conflicts(paths: &AppPaths) -> Result<Vec<ConflictRecord>> {
 }
 
 fn save_conflicts(paths: &AppPaths, conflicts: &[ConflictRecord]) -> Result<()> {
-    fs::write(conflicts_file(paths), serde_json::to_string_pretty(conflicts)?)?;
+    fs::write(
+        conflicts_file(paths),
+        serde_json::to_string_pretty(conflicts)?,
+    )?;
     Ok(())
 }
 
@@ -1141,14 +1226,18 @@ fn store_token(paths: &AppPaths, token: &str) -> Result<()> {
     let keychain_result = save_token(token);
     save_token_fallback(paths, token)?;
     if let Err(error) = keychain_result {
-        eprintln!("ConfigPilot: Keychain token save failed, fallback token file was written: {error}");
+        eprintln!(
+            "ConfigPilot: Keychain token save failed, fallback token file was written: {error}"
+        );
     }
     Ok(())
 }
 
 fn load_token() -> Result<String> {
     let entry = keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_USER)?;
-    entry.get_password().context("未找到 GitHub token，请先授权")
+    entry
+        .get_password()
+        .context("未找到 GitHub token，请先授权")
 }
 
 fn token_fallback_file(paths: &AppPaths) -> PathBuf {
@@ -1194,7 +1283,12 @@ fn hash_path(path: &Path) -> Result<String> {
             .collect::<Vec<_>>();
         files.sort();
         for file in files {
-            hasher.update(file.strip_prefix(path).unwrap_or(&file).display().to_string());
+            hasher.update(
+                file.strip_prefix(path)
+                    .unwrap_or(&file)
+                    .display()
+                    .to_string(),
+            );
             hash_file(&file, &mut hasher)?;
         }
     }
